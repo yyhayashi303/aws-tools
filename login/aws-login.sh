@@ -1,5 +1,5 @@
 #!/bin/sh
-while getopts ":l:c:p:n:" OPT ; do
+while getopts ":l:c:p:" OPT ; do
   case $OPT in
     l)
       elbName=$OPTARG
@@ -10,9 +10,6 @@ while getopts ":l:c:p:n:" OPT ; do
     p)
       profile=$OPTARG
       ;;
-    n)
-      limit=$OPTARG
-      ;;
     \? )
       echo nothing matched
       ;;
@@ -22,22 +19,29 @@ done
 [[ -z "$profile" ]] && exit 1
 
 if [[ ! -z "$elbName" ]]; then
-  instanceIds=`aws --profile $profile elb describe-load-balancers --load-balancer-name $elbName | jq -r '.LoadBalancerDescriptions[] | .Instances[] | .InstanceId' | tr '\n' ' '`
+  instanceIds=`aws --profile $profile --region ap-northeast-1 elb describe-load-balancers --load-balancer-name $elbName | jq -r '.LoadBalancerDescriptions[] | .Instances[] | .InstanceId' | tr '\n' ' '`
 fi
 if [[ ! -z "$ec2Name"  ]]; then
-  instanceIds=`aws ec2 --profile $profile describe-instances --filter "Name=tag:Name,Values=$ec2Name" | jq -r '.Reservations[] | .Instances[] | select(.State.Name == "running") | .InstanceId' | tr '\n' ' '`
+  instanceIds=`aws --profile $profile --region ap-northeast-1 ec2 describe-instances --filter "Name=tag:Name,Values=$ec2Name" | jq -r '.Reservations[] | .Instances[] | select(.State.Name == "running") | .InstanceId' | tr '\n' ' '`
 fi
 
 if [ -z "$instanceIds" ]; then
   echo "Instance not found"
   exit 1
 fi
-instanceIps=`aws --profile $profile ec2 describe-instances --instance-ids $instanceIds | jq -r '.Reservations[] | .Instances[] | select(.State.Name == "running") | .PrivateIpAddress' | tr '\n' ','`
+ips=`aws --profile $profile --region ap-northeast-1 ec2 describe-instances --instance-ids $instanceIds | jq -r '.Reservations[] | .Instances[] | select(.State.Name == "running") | .PrivateIpAddress' | tr '\n' ','`
 
-if [ -z $limit ]; then
-  targetIps=$instanceIps
-else
-  targetIps=`echo $instanceIps | cut -d "," -f 1-$limit`
-fi
+echo "ログインするホストを指定してください。"
+select ip in `echo ${ips} | sed 's/,/ /g'`
+do
+  if [ "$ip" = "" ]; then
+    echo "番号を指定してください。"
+    continue
+  fi
+  if [ "$ip" = "exit" ]; then
+    exit 0
+  fi
+  break
+done
 
-multi-ssh-with-tmux.sh $profile-$elbName $profile $targetIps
+ssh -o StrictHostKeyChecking=no ${ip}
