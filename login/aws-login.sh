@@ -29,19 +29,18 @@ if [ -z "$instanceIds" ]; then
   echo "Instance not found"
   exit 1
 fi
-ips=`aws --profile $profile --region ap-northeast-1 ec2 describe-instances --instance-ids $instanceIds | jq -r '.Reservations[] | .Instances[] | select(.State.Name == "running") | .PrivateIpAddress' | tr '\n' ','`
+targets=`aws --profile $profile --region ap-northeast-1 ec2 describe-instances --instance-ids $instanceIds | \
+	jq -c '.Reservations[] | .Instances[] | select(.State.Name == "running") | {name:.Tags | map(select( .["Key"] == "Name" ))[].Value, id:.InstanceId, ip:.PrivateIpAddress}' | \
+	tr '\n' ' '`
 
-echo "ログインするホストを指定してください。"
-select ip in `echo ${ips} | sed 's/,/ /g'`
+echo "ログインするインスタンスを指定してください。"
+select target in ${targets}
 do
-  if [ "$ip" = "" ]; then
+  if [ "$target" = "" ]; then
     echo "番号を指定してください。"
     continue
-  fi
-  if [ "$ip" = "exit" ]; then
-    exit 0
   fi
   break
 done
 
-ssh -o StrictHostKeyChecking=no ${ip}
+ssh -o StrictHostKeyChecking=no `echo ${target} | jq -r .ip`
