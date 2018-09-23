@@ -43,4 +43,4 @@ do
   break
 done
 
-ssh -o StrictHostKeyChecking=no `echo ${target} | jq -r .ip`
+ssh -o StrictHostKeyChecking=no -o ProxyCommand="ssh -W %h:%p ${profile}" `echo ${target} | jq -r .ip`
